@@ -98,27 +98,21 @@ export const ApiKeyStatusSection: React.FC = () => {
     handleTestSingleSlot(slotId);
   };
 
-  const getStatusIcon = (status: KeyHealthStatus) => {
+  const getStatusIcon = (status: KeyHealthStatus | 'checking') => {
     switch (status) {
       case 'active': return <CheckCircle2 size={14} className="text-status-success" />;
-      case 'quota_exceeded': return <AlertTriangle size={14} className="text-status-warning" />;
-      case 'invalid_key': return <XCircle size={14} className="text-status-error" />;
       case 'missing': return <Key size={14} className="text-text-muted opacity-60" />;
       case 'checking': return <RefreshCw size={14} className="text-status-info animate-spin" />;
-      case 'error':
-      default: return <XCircle size={14} className="text-status-error" />;
+      default: return <XCircle size={14} className="text-status-error" />; // quota_exceeded, invalid_key, error
     }
   };
 
-  const getStatusText = (status: KeyHealthStatus) => {
+  const getStatusText = (status: KeyHealthStatus | 'checking') => {
     switch (status) {
-      case 'active': return 'Active';
-      case 'quota_exceeded': return 'Quota Reached';
-      case 'invalid_key': return 'Invalid Key';
-      case 'missing': return 'Not Configured';
+      case 'active': return 'Connected';
+      case 'missing': return 'Off';
       case 'checking': return 'Checking...';
-      case 'error':
-      default: return 'Error';
+      default: return 'Disconnected'; // quota_exceeded, invalid_key, error
     }
   };
 
@@ -135,9 +129,6 @@ export const ApiKeyStatusSection: React.FC = () => {
             <div className="flex flex-col truncate">
               <span className="text-sm font-medium text-text-heading truncate">
                 {slotInfo.label}
-              </span>
-              <span className="text-[11px] font-mono text-text-muted truncate">
-                {slotInfo.isCustom ? 'Local Override' : slotInfo.envVarName}
               </span>
             </div>
           </div>

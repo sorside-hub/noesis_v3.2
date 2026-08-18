@@ -45,6 +45,7 @@ export function classifyGeminiApiError(error: unknown): { status: KeyHealthStatu
   const errStr = error instanceof Error ? error.message : String(error);
   const lowerMsg = errStr.toLowerCase();
 
+  // All errors are mapped internally but simplified at the UI level
   if (
     lowerMsg.includes('429') || 
     lowerMsg.includes('quota') || 
@@ -111,30 +112,15 @@ export async function testKeyHealth(apiKey: string): Promise<{
   const startTime = Date.now();
   try {
     const ai = createGeminiClient(apiKey.trim());
-    // Send a lightweight health check ping using gemini-3.6-flash
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: 'Respond with "OK"',
-      config: {
-        maxOutputTokens: 5,
-        temperature: 0.1,
-      },
-    });
+    // We use models.get instead of generateContent to avoid burning generation tokens for health checks
+    await ai.models.get({ model: 'gemini-3.6-flash' });
 
     const latencyMs = Date.now() - startTime;
-    if (response.text) {
-      return {
-        status: 'active',
-        latencyMs,
-        message: 'Koneksi aktif & beroperasi normal',
-      };
-    } else {
-      return {
-        status: 'active',
-        latencyMs,
-        message: 'Koneksi terhubung (respon kosong)',
-      };
-    }
+    return {
+      status: 'active',
+      latencyMs,
+      message: 'Connected successfully',
+    };
   } catch (err: unknown) {
     const latencyMs = Date.now() - startTime;
     const classified = classifyGeminiApiError(err);
@@ -148,107 +134,72 @@ export async function testKeyHealth(apiKey: string): Promise<{
 
 /**
  * Main Failover Adapter Execution Wrapper:
- * Automatically executes task with Primary Key first, and seamlessly switches to Backup Key if Primary hits Quota Exceeded / Rate Limit.
+ * Automatically iterates through the provided cascade plan (switching roles and models)
+ * until a successful execution occurs or the cascade is exhausted.
  */
 export async function executeWithFailover<T>(
   options: FailoverExecutionOptions,
-  taskRunner: (client: GoogleGenAI, slotId: KeySlotId, role: KeyRole) => Promise<T>
+  taskRunner: (client: GoogleGenAI, slotId: KeySlotId, role: KeyRole, model: string) => Promise<T>
 ): Promise<FailoverExecutionResult<T>> {
-  const pair = options.pair;
-  const primarySlot: KeySlotId = pair === 'chat' ? 'chat_primary' : 'feature_primary';
-  const backupSlot: KeySlotId = pair === 'chat' ? 'chat_backup' : 'feature_backup';
-
-  const primaryKey = resolveServerKeyForSlot(primarySlot, options.customKeys);
-  const backupKey = resolveServerKeyForSlot(backupSlot, options.customKeys);
-
   const attempts: FailoverExecutionResult<T>['attempts'] = [];
 
-  // Attempt 1: Try Primary Key
-  if (primaryKey) {
-    try {
-      const client = createGeminiClient(primaryKey);
-      const data = await taskRunner(client, primarySlot, 'primary');
+  for (let i = 0; i < options.cascade.length; i++) {
+    const step = options.cascade[i];
+    const slotId: KeySlotId = `${options.pair}_${step.role}` as KeySlotId;
+    const targetKey = resolveServerKeyForSlot(slotId, options.customKeys, options.envObj);
+
+    if (!targetKey) {
       attempts.push({
-        slotId: primarySlot,
-        role: 'primary',
+        slotId,
+        role: step.role,
+        modelTried: step.model,
+        error: `API Key (${slotId}) tidak dikonfigurasi`,
+        status: 'missing',
+      });
+      continue;
+    }
+
+    try {
+      const client = createGeminiClient(targetKey);
+      const data = await taskRunner(client, slotId, step.role, step.model);
+      
+      attempts.push({
+        slotId,
+        role: step.role,
+        modelTried: step.model,
         status: 'active',
       });
 
       return {
         success: true,
         data,
-        usedSlot: primarySlot,
-        usedRole: 'primary',
-        wasFallbackUsed: false,
+        usedSlot: slotId,
+        usedRole: step.role,
+        usedModel: step.model,
+        wasFallbackUsed: i > 0,
         attempts,
       };
-    } catch (primaryErr: unknown) {
-      const classified = classifyGeminiApiError(primaryErr);
+    } catch (err: unknown) {
+      const classified = classifyGeminiApiError(err);
       attempts.push({
-        slotId: primarySlot,
-        role: 'primary',
+        slotId,
+        role: step.role,
+        modelTried: step.model,
         error: classified.message,
         status: classified.status,
       });
 
       console.warn(
-        `[FailoverAdapter] Primary Key (${primarySlot}) failed with status "${classified.status}". Trying Backup Key...`
+        `[FailoverAdapter] Attempt ${i + 1} (${slotId} / ${step.model}) failed with status "${classified.status}". Actual error: ${err instanceof Error ? err.message : String(err)}`
       );
+      // Loop continues to the next cascade step
     }
-  } else {
-    attempts.push({
-      slotId: primarySlot,
-      role: 'primary',
-      error: 'Primary API Key tidak dikonfigurasi',
-      status: 'missing',
-    });
   }
 
-  // Attempt 2: Try Backup Key if Primary Key failed or missing
-  if (backupKey) {
-    try {
-      const client = createGeminiClient(backupKey);
-      const data = await taskRunner(client, backupSlot, 'backup');
-      attempts.push({
-        slotId: backupSlot,
-        role: 'backup',
-        status: 'active',
-      });
-
-      return {
-        success: true,
-        data,
-        usedSlot: backupSlot,
-        usedRole: 'backup',
-        wasFallbackUsed: true,
-        attempts,
-      };
-    } catch (backupErr: unknown) {
-      const classified = classifyGeminiApiError(backupErr);
-      attempts.push({
-        slotId: backupSlot,
-        role: 'backup',
-        error: classified.message,
-        status: classified.status,
-      });
-
-      console.error(
-        `[FailoverAdapter] Backup Key (${backupSlot}) also failed with status "${classified.status}".`
-      );
-    }
-  } else {
-    attempts.push({
-      slotId: backupSlot,
-      role: 'backup',
-      error: 'Backup API Key tidak dikonfigurasi',
-      status: 'missing',
-    });
-  }
-
-  // If both failed
+  // If we exhaust the entire cascade and nothing worked
   return {
     success: false,
-    usedSlot: primarySlot,
+    usedSlot: `${options.pair}_primary` as KeySlotId, // Fallback return format
     usedRole: 'primary',
     wasFallbackUsed: false,
     attempts,

@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import { KeySlotId } from './src/lib/ai/types';
 import { handleKeysOverview, handleSingleKeyCheck } from './src/api-core/keysHandler';
+import { handleDistil } from './src/api-core/distilHandler';
 
 // Load environment variables from .env
 dotenv.config();
@@ -57,6 +58,24 @@ async function startServer() {
       res.json(result);
     } catch (error: unknown) {
       console.error('[API /api/keys/check-single Error]:', error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Internal Server Error',
+      });
+    }
+  });
+
+  // POST /api/distil - Distil note content using Pair 2 keys
+  app.post('/api/distil', async (req, res) => {
+    try {
+      const { content, customKeys } = req.body as { content?: string, customKeys?: Partial<Record<KeySlotId, string>> };
+      if (!content) {
+        return res.status(400).json({ error: 'content is required' });
+      }
+      
+      const result = await handleDistil(content, customKeys, process.env);
+      res.json(result);
+    } catch (error: unknown) {
+      console.error('[API /api/distil Error]:', error);
       res.status(500).json({
         error: error instanceof Error ? error.message : 'Internal Server Error',
       });

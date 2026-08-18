@@ -19,8 +19,10 @@ import { VaultData, FileNode, NoteMetadata } from '../../../types/vault';
 import { twMerge } from 'tailwind-merge';
 import { ChipInput } from './ChipInput';
 import { useVirtualKeyboard } from '../../../hooks/useVirtualKeyboard';
+import { getAllLocalKeyOverrides } from '../../../lib/ai/keyManager';
+import { renderMarkdown } from '../../../lib/editor/markdownRenderer';
 
-export type RightSidebarTab = 'PROPERTIES' | 'BACKLINKS' | 'OUTGOING_LINKS' | 'OUTLINE';
+export type RightSidebarTab = 'PROPERTIES' | 'DISTIL' | 'BACKLINKS' | 'OUTGOING_LINKS' | 'OUTLINE';
 
 interface RightSidebarProps {
   isOpen: boolean;
@@ -44,6 +46,48 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const [isTabMenuOpen, setIsTabMenuOpen] = useState(false);
   const { isKeyboardOpen } = useVirtualKeyboard();
   const tabMenuRef = useRef<HTMLDivElement>(null);
+
+  const [isDistiling, setIsDistiling] = useState(false);
+  const [distilError, setDistilError] = useState('');
+  const [distilHtml, setDistilHtml] = useState('');
+
+  // Re-render markdown when distilResult changes
+  useEffect(() => {
+    if (activeNode?.metadata?.distilResult) {
+      renderMarkdown(activeNode.metadata.distilResult as string, vault.nodes)
+        .then(setDistilHtml)
+        .catch(console.error);
+    } else {
+      setDistilHtml('');
+    }
+  }, [activeNode?.metadata?.distilResult, vault.nodes]);
+
+  const handleGenerateDistil = async () => {
+    if (!activeNode || !activeNode.content) return;
+    setIsDistiling(true);
+    setDistilError('');
+    try {
+      const customKeys = getAllLocalKeyOverrides();
+      const response = await fetch('/api/distil', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: activeNode.content, customKeys })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to distil content');
+      }
+      if (!data.success) {
+        throw new Error(data.attempts?.[data.attempts.length - 1]?.error || 'AI generation failed');
+      }
+      // Save result to metadata
+      onUpdateMetadata(activeNode.id, { distilResult: data.data.text, distilModel: data.data.modelUsed });
+    } catch (err: any) {
+      setDistilError(err.message);
+    } finally {
+      setIsDistiling(false);
+    }
+  };
 
   // Close tab menu when clicked outside
   useEffect(() => {
@@ -108,6 +152,53 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const handleTypeChange = (val: string) => {
     if (!activeNode) return;
     onUpdateMetadata(activeNode.id, { noteType: val });
+  };
+
+  const handleDistilClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    // Handle Wikilink click
+    const wikilinkEl = target.closest('[data-wikilink]') as HTMLElement | null;
+    if (wikilinkEl) {
+      const targetName = wikilinkEl.getAttribute('data-wikilink');
+      if (targetName) {
+        e.stopPropagation();
+        // Since RightSidebar doesn't have onWikilinkClick directly, we can use onSelectFile 
+        // by finding the target node.
+        const allNodes = Object.values(vault.nodes) as FileNode[];
+        const matched = allNodes.find(
+          (n) => n.type === 'file' && (n.name.toLowerCase() === targetName.toLowerCase() || (n.metadata?.aliases || []).some(a => a.toLowerCase() === targetName.toLowerCase()))
+        );
+        if (matched) {
+          onSelectFile(matched.id);
+        }
+        return;
+      }
+    }
+
+    // Handle Copy Code Button
+    const copyBtn = target.closest('.copy-code-btn') as HTMLButtonElement | null;
+    if (copyBtn) {
+      e.stopPropagation();
+      const rawCode = copyBtn.getAttribute('data-code');
+      if (rawCode) {
+        const codeText = decodeURIComponent(rawCode);
+        navigator.clipboard.writeText(codeText).then(() => {
+          const copyIcon = copyBtn.querySelector('.copy-icon');
+          const checkIcon = copyBtn.querySelector('.check-icon');
+          const copyText = copyBtn.querySelector('.copy-text');
+          if (copyIcon && checkIcon && copyText) {
+            copyIcon.classList.add('hidden');
+            checkIcon.classList.remove('hidden');
+            copyText.textContent = 'Copied!';
+            setTimeout(() => {
+              copyIcon.classList.remove('hidden');
+              checkIcon.classList.add('hidden');
+              copyText.textContent = 'Copy';
+            }, 2000);
+          }
+        });
+      }
+    }
   };
 
   const handleStatusChange = (val: string) => {
@@ -229,6 +320,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   // Tab definitions
   const tabs: { id: RightSidebarTab; label: string; icon: React.FC<{ size?: number; className?: string }> }[] = [
     { id: 'PROPERTIES', label: 'Properties', icon: SlidersVertical },
+    { id: 'DISTIL', label: 'Distil AI', icon: Sparkles },
     { id: 'BACKLINKS', label: 'Backlinks', icon: ArrowLeftRight },
     { id: 'OUTGOING_LINKS', label: 'Outgoing Links', icon: Link2 },
     { id: 'OUTLINE', label: 'Outline', icon: ListTree },
@@ -404,7 +496,66 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               </div>
             )}
 
-            {/* ---------------- TAB 2: BACKLINKS ---------------- */}
+            {/* ---------------- TAB 2: DISTIL ---------------- */}
+            {activeTab === 'DISTIL' && (
+              <div className="space-y-4 animate-in fade-in duration-150">
+                <div className="space-y-1">
+                  <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles size={13} className="text-accent-primary" />
+                    Distil AI
+                  </h3>
+                  <p className="text-[11px] text-text-muted">
+                    Buat ringkasan dan poin penting dari catatan ini menggunakan AI.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isDistiling || !activeNode.content?.trim()}
+                  onClick={handleGenerateDistil}
+                  className="w-full flex items-center justify-center gap-2 bg-accent-primary hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold py-2.5 rounded-xl transition-colors shadow-sm"
+                >
+                  {isDistiling ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Distiling...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={14} />
+                      <span>Generate Distil</span>
+                    </>
+                  )}
+                </button>
+
+                {distilError && (
+                  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-600 dark:text-red-400">
+                    <strong className="block mb-1 font-semibold">Error:</strong>
+                    {distilError}
+                  </div>
+                )}
+
+                {metadata.distilResult && !isDistiling && (
+                  <div className="mt-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-[11px] font-bold text-text-heading uppercase tracking-wider">Result</h4>
+                      {metadata.distilModel && (
+                        <span className="text-[9px] font-mono bg-bg-primary border border-border-default px-1.5 py-0.5 rounded text-text-muted">
+                          {metadata.distilModel}
+                        </span>
+                      )}
+                    </div>
+                    <div 
+                      className="prose dark:prose-invert prose-zinc max-w-none text-xs leading-relaxed p-3.5 bg-bg-primary border border-border-default rounded-xl"
+                      dangerouslySetInnerHTML={{ __html: distilHtml }}
+                      onClick={handleDistilClick}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ---------------- TAB 3: BACKLINKS ---------------- */}
             {activeTab === 'BACKLINKS' && (
               <div className="space-y-3 animate-in fade-in duration-150">
                 <div className="space-y-1">

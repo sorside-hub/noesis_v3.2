@@ -37,6 +37,18 @@ export function maskApiKey(key: string): string {
 }
 
 /**
+ * Get all custom API keys stored in localStorage
+ */
+export function getAllLocalKeyOverrides(): Partial<Record<KeySlotId, string>> {
+  return {
+    chat_primary: getLocalKeyOverride('chat_primary'),
+    chat_backup: getLocalKeyOverride('chat_backup'),
+    feature_primary: getLocalKeyOverride('feature_primary'),
+    feature_backup: getLocalKeyOverride('feature_backup'),
+  };
+}
+
+/**
  * Cache in-memory for the keys overview to prevent spamming the API on every Settings mount.
  * Cache lasts for the entire app session until manually refreshed.
  */

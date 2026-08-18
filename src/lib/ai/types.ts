@@ -2,14 +2,14 @@
  * Types for Multi-Key Gemini Failover & Status Health Checking
  */
 
+import { CascadeStep } from './cascadeProfiles';
+
 export type KeyPairType = 'chat' | 'feature';
 export type KeyRole = 'primary' | 'backup';
 
 export type KeySlotId = 'chat_primary' | 'chat_backup' | 'feature_primary' | 'feature_backup';
 
 export type KeyHealthStatus = 
-  | 'idle'
-  | 'checking'
   | 'active'
   | 'quota_exceeded'
   | 'invalid_key'
@@ -61,7 +61,9 @@ export interface SingleKeyCheckRequest {
 
 export interface FailoverExecutionOptions {
   pair: KeyPairType;
+  cascade: CascadeStep[];
   customKeys?: Partial<Record<KeySlotId, string>>;
+  envObj?: Record<string, string | undefined>;
 }
 
 export interface FailoverExecutionResult<T> {
@@ -69,10 +71,12 @@ export interface FailoverExecutionResult<T> {
   data?: T;
   usedSlot: KeySlotId;
   usedRole: KeyRole;
+  usedModel?: string;
   wasFallbackUsed: boolean;
   attempts: Array<{
     slotId: KeySlotId;
     role: KeyRole;
+    modelTried: string;
     error?: string;
     status: KeyHealthStatus;
   }>;
