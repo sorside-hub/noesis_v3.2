@@ -2,6 +2,7 @@ import React from 'react';
 import { BookOpen, MessageSquare, Settings } from 'lucide-react';
 import { useScrollDirection } from '../../hooks/useScrollDirection';
 import { useVirtualKeyboard } from '../../hooks/useVirtualKeyboard';
+import { useNavigation } from '../../context/NavigationContext';
 
 export type ActiveTab = 'vault' | 'chat' | 'settings';
 
@@ -13,8 +14,9 @@ interface BottomNavPillProps {
 export const BottomNavPill: React.FC<BottomNavPillProps> = ({ activeTab, onTabChange }) => {
   const { isVisible } = useScrollDirection();
   const { isKeyboardOpen } = useVirtualKeyboard();
+  const { isMobileRightSidebarOpen } = useNavigation();
 
-  const shouldShow = isVisible && !isKeyboardOpen;
+  const shouldShow = isVisible && !isKeyboardOpen && !isMobileRightSidebarOpen;
   const isChatView = activeTab === 'chat';
 
   return (

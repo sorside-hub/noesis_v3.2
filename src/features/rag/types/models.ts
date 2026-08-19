@@ -22,4 +22,5 @@ export interface EmbeddingRecord {
   embeddingModel: string;   // e.g., 'text-embedding-004'
   dimension: number;        // e.g., 768
   createdAt: number;
+  similarityScore?: number; // Optional dynamically calculated score
 }
