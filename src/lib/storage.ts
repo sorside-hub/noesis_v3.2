@@ -11,29 +11,24 @@ const createDefaultNodes = (): Record<string, FileNode> => {
   const legacyTitle = localStorage.getItem(LEGACY_KEY_TITLE);
   const legacyContent = localStorage.getItem(LEGACY_KEY_CONTENT);
 
-  const initialNote: FileNode = {
-    id: DEFAULT_WELCOME_NOTE_ID,
-    name: legacyTitle?.trim() || 'Quick Notes',
-    type: 'file',
-    parentId: null,
-    content: legacyContent || '# Welcome to Noesis\n\nStart typing your thoughts here...',
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  };
+  // If there is legacy content, migrate it over so they don't lose data
+  if (legacyTitle || legacyContent) {
+    const initialNote: FileNode = {
+      id: DEFAULT_WELCOME_NOTE_ID,
+      name: legacyTitle?.trim() || 'Imported Note',
+      type: 'file',
+      parentId: null,
+      content: legacyContent || '',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    return {
+      [initialNote.id]: initialNote,
+    };
+  }
 
-  const initialFolder: FileNode = {
-    id: 'folder_notes',
-    name: 'Notes',
-    type: 'folder',
-    parentId: null,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  };
-
-  return {
-    [initialFolder.id]: initialFolder,
-    [initialNote.id]: initialNote,
-  };
+  // Otherwise, return a completely empty vault for new users
+  return {};
 };
 
 export const loadVault = async (): Promise<VaultData> => {
@@ -146,5 +141,44 @@ export const deleteNodes = async (ids: string[]): Promise<void> => {
     await db.nodes.bulkDelete(ids);
   } catch (err) {
     console.error('Failed to delete nodes from IndexedDB:', err);
+  }
+};
+
+export const exportVaultToJSON = async (): Promise<string> => {
+  try {
+    const allNodesArray = await db.nodes.toArray();
+    const exportData = {
+      version: 1,
+      timestamp: Date.now(),
+      nodes: allNodesArray,
+    };
+    return JSON.stringify(exportData, null, 2);
+  } catch (err) {
+    console.error('Failed to export vault:', err);
+    throw err;
+  }
+};
+
+export const importVaultFromJSON = async (jsonString: string): Promise<void> => {
+  try {
+    const parsed = JSON.parse(jsonString);
+    if (!parsed || !Array.isArray(parsed.nodes)) {
+      throw new Error('Invalid backup file format.');
+    }
+    
+    // Validate each node structure lightly
+    const nodesToImport: FileNode[] = parsed.nodes.filter((node: any) => 
+      node && typeof node.id === 'string' && typeof node.type === 'string' && typeof node.name === 'string'
+    );
+
+    if (nodesToImport.length === 0) {
+      throw new Error('No valid nodes found to import.');
+    }
+
+    // Upsert nodes to IndexedDB
+    await db.nodes.bulkPut(nodesToImport);
+  } catch (err) {
+    console.error('Failed to import vault:', err);
+    throw err;
   }
 };

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { 
   Sun, 
   Moon, 
@@ -8,11 +8,14 @@ import {
   Layers, 
   Check, 
   HardDrive, 
-  Keyboard
+  Keyboard,
+  Download,
+  Upload
 } from 'lucide-react';
 import { useTheme, ThemeMode } from '../../../hooks/useTheme';
 import { VaultData, FileNode } from '../../../types/vault';
 import { ApiKeyStatusSection } from './ApiKeyStatusSection';
+import { exportVaultToJSON, importVaultFromJSON } from '../../../lib/storage';
 
 interface SettingsViewProps {
   vault: VaultData;
@@ -20,6 +23,8 @@ interface SettingsViewProps {
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ vault }) => {
   const { theme, setTheme } = useTheme();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importStatus, setImportStatus] = useState<string>('');
 
   const allNodes = Object.values(vault.nodes) as FileNode[];
   const totalFiles = allNodes.filter((n) => n.type === 'file').length;
@@ -30,6 +35,53 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ vault }) => {
     { value: 'dark', label: 'Dark Mode', icon: <Moon size={18} className="text-blue-400" /> },
     { value: 'system', label: 'System Match', icon: <Laptop size={18} className="text-text-muted" /> },
   ];
+
+  const handleExport = async () => {
+    try {
+      const jsonStr = await exportVaultToJSON();
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const date = new Date().toISOString().split('T')[0];
+      a.download = `noesis-backup-${date}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to export vault.');
+    }
+  };
+
+  const handleImportClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImportStatus('Importing...');
+    try {
+      const text = await file.text();
+      await importVaultFromJSON(text);
+      setImportStatus('Import successful! Reloading...');
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch (err) {
+      console.error(err);
+      setImportStatus('Import failed. Invalid format.');
+      setTimeout(() => setImportStatus(''), 3000);
+    }
+    
+    // reset input
+    e.target.value = '';
+  };
 
   return (
     <div className="w-full h-full overflow-y-auto bg-bg-primary text-text-primary select-text">
@@ -93,6 +145,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ vault }) => {
                </div>
                <span className="text-sm text-text-muted">IndexedDB (Local)</span>
             </div>
+            <div className="p-3.5 flex flex-col sm:flex-row items-center gap-3">
+              <input
+                type="file"
+                accept=".json"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <button
+                onClick={handleExport}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-bg-primary hover:bg-bg-hover border border-border-default rounded-lg text-sm font-medium transition-colors text-text-primary"
+              >
+                <Download size={16} />
+                Backup / Export
+              </button>
+              <button
+                onClick={handleImportClick}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-bg-primary hover:bg-bg-hover border border-border-default rounded-lg text-sm font-medium transition-colors text-text-primary"
+              >
+                <Upload size={16} />
+                Restore / Import
+              </button>
+            </div>
+            {importStatus && (
+              <div className="p-3.5 text-center text-sm font-medium text-accent-primary bg-bg-hover">
+                {importStatus}
+              </div>
+            )}
           </div>
         </section>
         
