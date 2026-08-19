@@ -1,5 +1,6 @@
 import { NoteEditor } from './features/editor/components/NoteEditor';
 import { SettingsView } from './features/settings/components/SettingsView';
+import { ChatView } from './features/chat/components/ChatView';
 import { BottomNavPill } from './components/navigation/BottomNavPill';
 import { ActivityBar } from './components/navigation/ActivityBar';
 import { useVault } from './hooks/useVault';
@@ -33,6 +34,11 @@ function AppContent({ vaultState }: { vaultState: ReturnType<typeof useVault> })
         {/* Vault & Editor View */}
         <div className={`absolute inset-0 ${view === 'vault' ? 'block' : 'hidden'}`}>
           <NoteEditor vaultState={vaultState as any} />
+        </div>
+
+        {/* Chat / Ask AI View */}
+        <div className={`absolute inset-0 ${view === 'chat' ? 'block' : 'hidden'}`}>
+          <ChatView vault={vaultState.vault} />
         </div>
 
         {/* Settings View */}

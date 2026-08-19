@@ -121,6 +121,10 @@ export const useVault = () => {
         type: 'file',
         parentId,
         content: '',
+        metadata: {
+          status: 'Idea',
+          includeInAiRag: false
+        },
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
@@ -196,6 +200,7 @@ export const useVault = () => {
       };
       
       saveNode(updatedNode); // Async save
+
       return {
         ...prev,
         nodes: {

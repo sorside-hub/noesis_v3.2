@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, Settings, Bot, Plus } from 'lucide-react';
+import { BookOpen, Settings, MessageSquare, Plus } from 'lucide-react';
 import { ActiveTab } from './BottomNavPill';
 
 interface ActivityBarProps {
@@ -38,22 +38,22 @@ export const ActivityBar: React.FC<ActivityBarProps> = ({ activeTab, onTabChange
             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-text-primary rounded-r-full" />
           )}
         </button>
-        {/* Placeholder for future Chatbot/AI tab */}
-        {/* <button
+
+        <button
           type="button"
-          title="Chatbot"
-          onClick={() => onTabChange('chatbot')}
+          title="Chat"
+          onClick={() => onTabChange('chat')}
           className={`relative p-2.5 rounded-xl transition-all duration-150 cursor-pointer group flex items-center justify-center ${
-            activeTab === 'chatbot'
+            activeTab === 'chat'
               ? 'text-text-primary'
               : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'
           }`}
         >
-          <Bot size={20} strokeWidth={activeTab === 'chatbot' ? 2.5 : 2} />
-          {activeTab === 'chatbot' && (
+          <MessageSquare size={20} strokeWidth={activeTab === 'chat' ? 2.5 : 2} />
+          {activeTab === 'chat' && (
             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-text-primary rounded-r-full" />
           )}
-        </button> */}
+        </button>
       </div>
 
       <div className="flex flex-col items-center gap-4">

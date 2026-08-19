@@ -103,51 +103,38 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({ vaultState: externalVaul
     currentOffset: 0,
   });
 
+  // Bulletproof Drawer Snap Helpers (Percentage based to prevent stuck states & handle resize)
+  const snapLeftDrawer = useCallback((open: boolean) => {
+    if (leftDrawerRef.current && leftBackdropRef.current) {
+      leftDrawerRef.current.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
+      leftDrawerRef.current.style.transform = open ? 'translate3d(0%, 0, 0)' : 'translate3d(-100%, 0, 0)';
+      leftBackdropRef.current.style.transition = 'opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
+      leftBackdropRef.current.style.opacity = open ? '1' : '0';
+      leftBackdropRef.current.style.pointerEvents = open ? 'auto' : 'none';
+    }
+  }, []);
+
+  const snapRightDrawer = useCallback((open: boolean) => {
+    if (rightDrawerRef.current && rightBackdropRef.current) {
+      rightDrawerRef.current.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
+      rightDrawerRef.current.style.transform = open ? 'translate3d(0%, 0, 0)' : 'translate3d(100%, 0, 0)';
+      rightBackdropRef.current.style.transition = 'opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
+      rightBackdropRef.current.style.opacity = open ? '1' : '0';
+      rightBackdropRef.current.style.pointerEvents = open ? 'auto' : 'none';
+    }
+  }, []);
+
   // Keep Left drawer state sync
   useEffect(() => {
     leftGestureState.current.isOpen = isMobileSidebarOpen;
-    const width = window.innerWidth;
-    leftGestureState.current.drawerWidth = width;
-
-    if (leftDrawerRef.current && leftBackdropRef.current) {
-      if (isMobileSidebarOpen) {
-        leftDrawerRef.current.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
-        leftDrawerRef.current.style.transform = 'translate3d(0px, 0, 0)';
-        leftBackdropRef.current.style.transition = 'opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
-        leftBackdropRef.current.style.opacity = '1';
-        leftBackdropRef.current.style.pointerEvents = 'auto';
-      } else {
-        leftDrawerRef.current.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
-        leftDrawerRef.current.style.transform = `translate3d(-${width}px, 0, 0)`;
-        leftBackdropRef.current.style.transition = 'opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
-        leftBackdropRef.current.style.opacity = '0';
-        leftBackdropRef.current.style.pointerEvents = 'none';
-      }
-    }
-  }, [isMobileSidebarOpen]);
+    snapLeftDrawer(isMobileSidebarOpen);
+  }, [isMobileSidebarOpen, snapLeftDrawer]);
 
   // Keep Right drawer state sync
   useEffect(() => {
     rightGestureState.current.isOpen = isMobileRightSidebarOpen;
-    const width = window.innerWidth;
-    rightGestureState.current.drawerWidth = width;
-
-    if (rightDrawerRef.current && rightBackdropRef.current) {
-      if (isMobileRightSidebarOpen) {
-        rightDrawerRef.current.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
-        rightDrawerRef.current.style.transform = 'translate3d(0px, 0, 0)';
-        rightBackdropRef.current.style.transition = 'opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
-        rightBackdropRef.current.style.opacity = '1';
-        rightBackdropRef.current.style.pointerEvents = 'auto';
-      } else {
-        rightDrawerRef.current.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
-        rightDrawerRef.current.style.transform = `translate3d(${width}px, 0, 0)`;
-        rightBackdropRef.current.style.transition = 'opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
-        rightBackdropRef.current.style.opacity = '0';
-        rightBackdropRef.current.style.pointerEvents = 'none';
-      }
-    }
-  }, [isMobileRightSidebarOpen]);
+    snapRightDrawer(isMobileRightSidebarOpen);
+  }, [isMobileRightSidebarOpen, snapRightDrawer]);
 
   // Window resize handler for drawer widths
   useEffect(() => {
@@ -155,17 +142,12 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({ vaultState: externalVaul
       const width = window.innerWidth;
       leftGestureState.current.drawerWidth = width;
       rightGestureState.current.drawerWidth = width;
-
-      if (!leftGestureState.current.isOpen && leftDrawerRef.current) {
-        leftDrawerRef.current.style.transform = `translate3d(-${width}px, 0, 0)`;
-      }
-      if (!rightGestureState.current.isOpen && rightDrawerRef.current) {
-        rightDrawerRef.current.style.transform = `translate3d(${width}px, 0, 0)`;
-      }
+      snapLeftDrawer(leftGestureState.current.isOpen);
+      snapRightDrawer(rightGestureState.current.isOpen);
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [snapLeftDrawer, snapRightDrawer]);
 
   // -------------------------------------------------------------
   // TOUCH GESTURE HANDLING (Both Left and Right Slide Drawers)
@@ -177,7 +159,7 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({ vaultState: externalVaul
     const now = Date.now();
 
     const target = e.target as HTMLElement | null;
-    const shouldIgnore = !!target?.closest('header, button, input, [data-no-swipe], .cm-editor, .cm-content');
+    const shouldIgnore = !!target?.closest('header, button, input, textarea, select, [data-no-swipe], .cm-editor, .cm-content');
 
     // Left state init
     const leftState = leftGestureState.current;
@@ -228,7 +210,6 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({ vaultState: externalVaul
     }
 
     // Check if moving primarily horizontally with a solid deadzone (not too sensitive)
-    // Threshold: User must move horizontally by at least 24px and horizontal movement must dominate vertical (deltaX > deltaY * 1.5)
     const SWIPE_INIT_THRESHOLD = 24;
 
     if (!leftState.isSwiping && !rightState.isSwiping) {
@@ -249,9 +230,6 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({ vaultState: externalVaul
           }
         } else {
           // Both closed:
-          // In Preview/Empty mode or across the viewport:
-          // Swipe rightwards (deltaX > 0) -> Opens Left Sidebar
-          // Swipe leftwards (deltaX < 0) -> Opens Right Sidebar
           if (deltaX > 0) {
             leftState.isSwiping = true;
             if (leftDrawerRef.current) leftDrawerRef.current.style.transition = 'none';
@@ -267,27 +245,30 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({ vaultState: externalVaul
 
     // Handle Active Left Swipe
     if (leftState.isSwiping && leftDrawerRef.current && leftBackdropRef.current) {
-      const width = leftState.drawerWidth;
+      const width = leftState.drawerWidth || window.innerWidth;
       const basePos = leftState.isOpen ? 0 : -width;
       const newPos = Math.min(0, Math.max(-width, basePos + deltaX));
       leftState.currentOffset = newPos;
 
-      leftDrawerRef.current.style.transform = `translate3d(${newPos}px, 0, 0)`;
       const progress = (newPos + width) / width;
+      const translatePercent = (progress - 1) * 100;
+
+      leftDrawerRef.current.style.transform = `translate3d(${translatePercent}%, 0, 0)`;
       leftBackdropRef.current.style.opacity = `${progress}`;
       leftBackdropRef.current.style.pointerEvents = progress > 0.05 ? 'auto' : 'none';
     }
 
     // Handle Active Right Swipe
     if (rightState.isSwiping && rightDrawerRef.current && rightBackdropRef.current) {
-      const width = rightState.drawerWidth;
-      // Start position: 0 if open, +width if closed
+      const width = rightState.drawerWidth || window.innerWidth;
       const basePos = rightState.isOpen ? 0 : width;
       const newPos = Math.max(0, Math.min(width, basePos + deltaX));
       rightState.currentOffset = newPos;
 
-      rightDrawerRef.current.style.transform = `translate3d(${newPos}px, 0, 0)`;
       const progress = (width - newPos) / width;
+      const translatePercent = (1 - progress) * 100;
+
+      rightDrawerRef.current.style.transform = `translate3d(${translatePercent}%, 0, 0)`;
       rightBackdropRef.current.style.opacity = `${progress}`;
       rightBackdropRef.current.style.pointerEvents = progress > 0.05 ? 'auto' : 'none';
     }
@@ -308,73 +289,39 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({ vaultState: externalVaul
 
     // Finish Left Swipe
     if (leftState.isSwiping) {
-      const width = leftState.drawerWidth;
+      const width = leftState.drawerWidth || window.innerWidth;
       const progress = (leftState.currentOffset + width) / width;
       const velocity = leftState.velocityX;
 
-      if (!leftState.isOpen) {
-        if (velocity > 0.4 || progress > 0.3) {
-          openMobileSidebar();
-        } else {
-          closeMobileSidebar();
-          if (leftDrawerRef.current && leftBackdropRef.current) {
-            leftDrawerRef.current.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
-            leftDrawerRef.current.style.transform = `translate3d(-${width}px, 0, 0)`;
-            leftBackdropRef.current.style.transition = 'opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
-            leftBackdropRef.current.style.opacity = '0';
-            leftBackdropRef.current.style.pointerEvents = 'none';
-          }
-        }
+      const shouldOpen = !leftState.isOpen
+        ? (velocity > 0.35 || progress > 0.3)
+        : !(velocity < -0.35 || progress < 0.7);
+
+      if (shouldOpen) {
+        openMobileSidebar();
       } else {
-        if (velocity < -0.4 || progress < 0.7) {
-          closeMobileSidebar();
-        } else {
-          openMobileSidebar();
-          if (leftDrawerRef.current && leftBackdropRef.current) {
-            leftDrawerRef.current.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
-            leftDrawerRef.current.style.transform = 'translate3d(0px, 0, 0)';
-            leftBackdropRef.current.style.transition = 'opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
-            leftBackdropRef.current.style.opacity = '1';
-          }
-        }
+        closeMobileSidebar();
       }
+      snapLeftDrawer(shouldOpen);
       leftState.isSwiping = false;
     }
 
     // Finish Right Swipe
     if (rightState.isSwiping) {
-      const width = rightState.drawerWidth;
+      const width = rightState.drawerWidth || window.innerWidth;
       const progress = (width - rightState.currentOffset) / width;
       const velocity = rightState.velocityX;
 
-      if (!rightState.isOpen) {
-        // Was closed, opening leftwards (negative velocity or dragged enough)
-        if (velocity < -0.4 || progress > 0.3) {
-          openMobileRightSidebar();
-        } else {
-          closeMobileRightSidebar();
-          if (rightDrawerRef.current && rightBackdropRef.current) {
-            rightDrawerRef.current.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
-            rightDrawerRef.current.style.transform = `translate3d(${width}px, 0, 0)`;
-            rightBackdropRef.current.style.transition = 'opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
-            rightBackdropRef.current.style.opacity = '0';
-            rightBackdropRef.current.style.pointerEvents = 'none';
-          }
-        }
+      const shouldOpen = !rightState.isOpen
+        ? (velocity < -0.35 || progress > 0.3)
+        : !(velocity > 0.35 || progress < 0.7);
+
+      if (shouldOpen) {
+        openMobileRightSidebar();
       } else {
-        // Was open, closing rightwards (positive velocity or dragged back)
-        if (velocity > 0.4 || progress < 0.7) {
-          closeMobileRightSidebar();
-        } else {
-          openMobileRightSidebar();
-          if (rightDrawerRef.current && rightBackdropRef.current) {
-            rightDrawerRef.current.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
-            rightDrawerRef.current.style.transform = 'translate3d(0px, 0, 0)';
-            rightBackdropRef.current.style.transition = 'opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
-            rightBackdropRef.current.style.opacity = '1';
-          }
-        }
+        closeMobileRightSidebar();
       }
+      snapRightDrawer(shouldOpen);
       rightState.isSwiping = false;
     }
   };
@@ -483,7 +430,7 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({ vaultState: externalVaul
   };
 
   const handleRightHeaderToggle = () => {
-    if (window.innerWidth >= 1280) {
+    if (window.innerWidth >= 1024) {
       setIsDesktopRightSidebarOpen((prev) => !prev);
     } else {
       if (isMobileRightSidebarOpen) {
@@ -499,6 +446,8 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({ vaultState: externalVaul
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+      style={{ touchAction: 'pan-y' }}
       className="flex h-full w-full overflow-hidden bg-bg-primary text-[length:var(--text-body-size)] select-text relative"
     >
       {/* 1. DESKTOP LEFT SIDEBAR (Inline collapsible) */}

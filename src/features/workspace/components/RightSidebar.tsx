@@ -13,7 +13,11 @@ import {
   Calendar, 
   FileCode, 
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Loader2,
+  RefreshCw,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { VaultData, FileNode, NoteMetadata } from '../../../types/vault';
 import { twMerge } from 'tailwind-merge';
@@ -21,6 +25,7 @@ import { ChipInput } from './ChipInput';
 import { useVirtualKeyboard } from '../../../hooks/useVirtualKeyboard';
 import { getAllLocalKeyOverrides } from '../../../lib/ai/keyManager';
 import { renderMarkdown } from '../../../lib/editor/markdownRenderer';
+import { RAGPipeline } from '../../rag/services/ragPipeline';
 
 export type RightSidebarTab = 'PROPERTIES' | 'DISTIL' | 'BACKLINKS' | 'OUTGOING_LINKS' | 'OUTLINE';
 
@@ -50,6 +55,27 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const [isDistiling, setIsDistiling] = useState(false);
   const [distilError, setDistilError] = useState('');
   const [distilHtml, setDistilHtml] = useState('');
+  const [isSyncingRag, setIsSyncingRag] = useState(false);
+  const [isSynced, setIsSynced] = useState<boolean | null>(null);
+
+  const includeInAiRag = activeNode?.metadata?.includeInAiRag ?? false;
+
+  // Check sync status whenever note, content, or RAG toggle changes
+  useEffect(() => {
+    if (!activeNode || !includeInAiRag) {
+      setIsSynced(null);
+      return;
+    }
+    let isMounted = true;
+    RAGPipeline.isNoteSynced(activeNode.id, activeNode.content || '').then((synced) => {
+      if (isMounted) {
+        setIsSynced(synced);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [activeNode?.id, activeNode?.content, includeInAiRag]);
 
   // Re-render markdown when distilResult changes
   useEffect(() => {
@@ -146,7 +172,6 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const aliases = metadata.aliases || [];
   const noteType = metadata.noteType || '';
   const status = metadata.status || 'Idea';
-  const includeInAiRag = metadata.includeInAiRag ?? true;
 
   // Metadata Handlers
   const handleTypeChange = (val: string) => {
@@ -216,9 +241,51 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     onUpdateMetadata(activeNode.id, { aliases: newAliases });
   };
 
-  const handleToggleRag = () => {
+  const handleManualSync = async () => {
     if (!activeNode) return;
-    onUpdateMetadata(activeNode.id, { includeInAiRag: !includeInAiRag });
+    setIsSyncingRag(true);
+    try {
+      const customKeys = getAllLocalKeyOverrides();
+      const pipeline = new RAGPipeline(customKeys);
+      await pipeline.processNote(activeNode.id, activeNode.content || '');
+      setIsSynced(true);
+    } catch (err) {
+      console.error('Failed manual sync to brain:', err);
+    } finally {
+      setIsSyncingRag(false);
+    }
+  };
+
+  const handleToggleRag = async () => {
+    if (!activeNode) return;
+    
+    const nextState = !includeInAiRag;
+    
+    if (nextState) {
+      // Turning ON: Sync to brain immediately
+      setIsSyncingRag(true);
+      try {
+        const customKeys = getAllLocalKeyOverrides();
+        const pipeline = new RAGPipeline(customKeys);
+        await pipeline.processNote(activeNode.id, activeNode.content || '');
+        onUpdateMetadata(activeNode.id, { includeInAiRag: nextState });
+        setIsSynced(true);
+      } catch (err) {
+        console.error('Failed to sync to brain:', err);
+      } finally {
+        setIsSyncingRag(false);
+      }
+    } else {
+      // Turning OFF: Delete from brain
+      try {
+        const pipeline = new RAGPipeline();
+        await pipeline.deleteNote(activeNode.id);
+        onUpdateMetadata(activeNode.id, { includeInAiRag: nextState });
+        setIsSynced(null);
+      } catch (err) {
+        console.error('Failed to delete from brain:', err);
+      }
+    }
   };
 
   // 4. Backlinks calculation (nodes in vault that link to activeNode by name or alias)
@@ -414,29 +481,75 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   helperText="Alternative names for wikilink matching."
                 />
 
-                {/* 6. Toggle Include in AI RAG */}
-                <div className="flex items-center justify-between py-2">
-                  <div className="space-y-0.5">
-                    <div className="text-[11px] font-semibold text-text-heading tracking-wider uppercase flex items-center gap-1.5">
-                      <Sparkles size={12} className="text-accent-primary" />
-                      <span>Include in AI RAG</span>
+                {/* 6. Toggle Include in AI RAG & Manual Sync Control */}
+                <div className="space-y-2.5 py-2">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <div className="text-[11px] font-semibold text-text-heading tracking-wider uppercase flex items-center gap-1.5">
+                        <Sparkles size={12} className="text-accent-primary" />
+                        <span>Include in AI RAG</span>
+                      </div>
+                      <p className="text-[10px] text-text-muted">
+                        Sertakan catatan ini dalam konteks AI
+                      </p>
                     </div>
-                    <p className="text-[10px] text-text-muted">
-                      Sertakan catatan ini dalam konteks AI
-                    </p>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={includeInAiRag}
+                      onClick={handleToggleRag}
+                      disabled={isSyncingRag}
+                      className={twMerge(
+                        'w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200',
+                        isSyncingRag ? 'cursor-not-allowed opacity-70' : 'cursor-pointer',
+                        includeInAiRag ? 'bg-accent-primary justify-end' : 'bg-bg-hover border border-border-default justify-start'
+                      )}
+                    >
+                      <div className="w-4 h-4 rounded-full bg-white shadow-xs flex items-center justify-center">
+                        {isSyncingRag && <Loader2 size={10} className="animate-spin text-accent-primary" />}
+                      </div>
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={includeInAiRag}
-                    onClick={handleToggleRag}
-                    className={twMerge(
-                      'w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200 cursor-pointer',
-                      includeInAiRag ? 'bg-accent-primary justify-end' : 'bg-bg-hover border border-border-default justify-start'
-                    )}
-                  >
-                    <div className="w-4 h-4 rounded-full bg-white shadow-xs" />
-                  </button>
+
+                  {includeInAiRag && (
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-bg-hover/50 border border-border-subtle text-xs transition-all duration-200">
+                      <div className="flex items-center gap-1.5 text-[11px]">
+                        {isSyncingRag ? (
+                          <>
+                            <Loader2 size={12} className="animate-spin text-accent-primary" />
+                            <span className="text-accent-primary font-medium">Syncing...</span>
+                          </>
+                        ) : isSynced ? (
+                          <>
+                            <CheckCircle2 size={12} className="text-emerald-500" />
+                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">In Sync</span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle size={12} className="text-amber-500" />
+                            <span className="text-amber-600 dark:text-amber-400 font-medium">Out of Sync</span>
+                          </>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleManualSync}
+                        disabled={isSyncingRag}
+                        className={twMerge(
+                          'flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md transition-all duration-150 cursor-pointer',
+                          isSyncingRag
+                            ? 'bg-border-default text-text-muted cursor-not-allowed'
+                            : isSynced
+                            ? 'bg-bg-primary hover:bg-border-subtle text-text-muted hover:text-text-primary border border-border-default'
+                            : 'bg-accent-primary text-white hover:bg-accent-primary/90 shadow-xs animate-pulse'
+                        )}
+                      >
+                        <RefreshCw size={11} className={isSyncingRag ? 'animate-spin' : ''} />
+                        <span>{isSynced ? 'Re-Sync' : 'Sync Now'}</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="h-px bg-border-subtle" />
