@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrainCircuit, Loader2, BookOpen, Eye, ChevronDown, ChevronRight, Layers, ExternalLink } from 'lucide-react';
 import { ChatMessageRecord } from '../../../lib/db';
-import { ChatMode } from './ChatView';
+import { ChatMode } from '../hooks/useChatLogic';
 import { useNavigation } from '../../../context/NavigationContext';
 
 interface ChatMessageFeedProps {

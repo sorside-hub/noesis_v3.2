@@ -1,6 +1,6 @@
 import React from 'react';
 import { SlidersHorizontal, X, BrainCircuit } from 'lucide-react';
-import { ChatMode } from './ChatView';
+import { ChatMode } from '../hooks/useChatLogic';
 
 interface ChatSettingsSidebarProps {
   isOpen: boolean;
